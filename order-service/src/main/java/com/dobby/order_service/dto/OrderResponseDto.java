@@ -8,6 +8,15 @@ public class OrderResponseDto {
     private int restaurantId;
     private String status;
 
+    public String getPickupAddress() {
+        return pickupAddress;
+    }
+
+    public void setPickupAddress(String pickupAddress) {
+        this.pickupAddress = pickupAddress;
+    }
+
+    private String pickupAddress;
     public String getStatus() {
         return status;
     }
