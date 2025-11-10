@@ -7,16 +7,11 @@ import com.dobby.order_service.dto.OrderResponseDto;
 import com.dobby.order_service.dto.OrderStatusUpdate;
 import com.dobby.order_service.entity.Order;
 import com.dobby.order_service.exception.ResourceNotFoundException;
+import com.dobby.order_service.kafka.KafkaProducer;
 import com.dobby.order_service.mapper.OrderMapper;
-import com.dobby.order_service.restclient.DeliveryClient;
-import com.dobby.order_service.util.ApiResponse;
 import com.dobby.order_service.util.CommonConstants;
-import com.fasterxml.jackson.databind.util.JSONWrappedObject;
-import org.aspectj.weaver.ast.Or;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.yaml.snakeyaml.events.Event;
 
 import java.text.MessageFormat;
 import java.util.List;
@@ -28,10 +23,10 @@ public class OrderService {
     private OrderDao dao;
 
     @Autowired
-    private DeliveryClient deliveryClient;
+    private OrderMapper mapper;
 
     @Autowired
-    private OrderMapper mapper;
+    private KafkaProducer producer;
 
     private Order getById(int id){
         return dao.findById(id).orElseThrow(()-> new ResourceNotFoundException(MessageFormat.format(CommonConstants.ORDER_NOT_FOUND,id)));
@@ -42,28 +37,11 @@ public class OrderService {
 
     public OrderResponseDto createOrder(OrderRequestDto dto){
         Order order = mapper.toEntity(dto);
-        order.setStatus(CommonConstants.ORDER_STATUS_PLACED);
+         order.setStatus(CommonConstants.ORDER_STATUS_PLACED);
          order = dao.save(order);
-        try {
-            DeliveryRequestDto deliveryDto = new DeliveryRequestDto(
-                    order.getOrderId(),
-                    order.getPickupAddress(),
-                    order.getDeliveryAddress()
-            );
-
-            ResponseEntity<ApiResponse> response = deliveryClient.createDelivery(deliveryDto);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                order.setStatus(CommonConstants.ORDER_STATUS_PLACED);
-            } else {
-                order.setStatus(CommonConstants.ORDER_STATUS_DELIVERY_PENDING);
-            }
-
-        } catch (Exception e) {
-            order.setStatus(CommonConstants.ORDER_STATUS_DELIVERY_PENDING);
-        }
-        order = dao.save(order);
-        return mapper.toResponse(order);
+         OrderResponseDto response = mapper.toResponse(order);
+         producer.sendOrderEvent(response);
+         return response;
     }
 
     public OrderResponseDto updateOrderStatus(int id, OrderStatusUpdate status){
